@@ -20,6 +20,7 @@ from __future__ import print_function
 import argparse
 import sys
 import time
+from skimage import io,util
 
 import numpy as np
 import tensorflow as tf
@@ -32,35 +33,41 @@ def load_graph(model_file):
     graph_def.ParseFromString(f.read())
   with graph.as_default():
     tf.import_graph_def(graph_def)
-    
-    i = [node for node in graph_def.node]
-#    print(i[len(i)-3])
+
   return graph
 
-def read_tensor_from_image_file(file_name, input_height=299, input_width=299,
-				input_mean=0, input_std=255):
-  input_name = "file_reader"
-  output_name = "normalized"
-  file_reader = tf.read_file(file_name, input_name)
-  if file_name.endswith(".png"):
-    image_reader = tf.image.decode_png(file_reader, channels = 3,
-                                       name='png_reader')
-  elif file_name.endswith(".gif"):
-    image_reader = tf.squeeze(tf.image.decode_gif(file_reader,
-                                                  name='gif_reader'))
-  elif file_name.endswith(".bmp"):
-    image_reader = tf.image.decode_bmp(file_reader, name='bmp_reader')
-  else:
-    image_reader = tf.image.decode_jpeg(file_reader, channels = 3,
-                                        name='jpeg_reader')
-  float_caster = tf.cast(image_reader, tf.float32)
-  dims_expander = tf.expand_dims(float_caster, 0);
-  resized = tf.image.resize_bilinear(dims_expander, [input_height, input_width])
-  normalized = tf.divide(tf.subtract(resized, [input_mean]), [input_std])
-  sess = tf.Session()
-  result = sess.run(normalized)
 
-  return result
+def read_Image(file_name):
+    input_name = "file_reader"
+    with tf.device('/gpu:1'):
+        file_reader = tf.read_file(file_name, input_name)
+        if file_name.endswith(".png"):
+            image_reader = tf.image.decode_png(file_reader, channels = 3,
+                                           name='png_reader')
+        elif file_name.endswith(".gif"):
+            image_reader = tf.squeeze(tf.image.decode_gif(file_reader,
+                                                      name='gif_reader'))
+        elif file_name.endswith(".bmp"):
+            image_reader = tf.image.decode_bmp(file_reader, name='bmp_reader')
+        else:
+            image_reader = tf.image.decode_jpeg(file_reader, channels = 3,
+                                            name='jpeg_reader')
+        image = tf.cast(image_reader, tf.float32)
+    
+    
+    sess = tf.Session()
+    result = sess.run(image)
+    return result
+
+def read_tensor_from_image(image, input_height=299, input_width=299,
+				input_mean=0, input_std=255):
+    float_caster = tf.cast(image, tf.float32)
+    dims_expander = tf.expand_dims(float_caster, 0);
+    resized = tf.image.resize_bilinear(dims_expander, [input_height, input_width])
+    normalized = tf.divide(tf.subtract(resized, [input_mean]), [input_std])
+    sess = tf.Session()
+    result = sess.run(normalized)
+    return result
 
 def load_labels(label_file):
   label = []
@@ -73,6 +80,7 @@ if __name__ == "__main__":
   file_name = "tf_files/flower_photos/daisy/3475870145_685a19116d.jpg"
   model_file = "tf_files/retrained_graph.pb"
   label_file = "tf_files/retrained_labels.txt"
+  imageWidth = 2700
   input_height = 224
   input_width = 224
   input_mean = 128
@@ -112,33 +120,34 @@ if __name__ == "__main__":
     output_layer = args.output_layer
 
   graph = load_graph(model_file)
-  t = read_tensor_from_image_file(file_name,
-                                  input_height=input_height,
-                                  input_width=input_width,
-                                  input_mean=input_mean,
-                                  input_std=input_std)
-
-  input_name = "import/" + input_layer
-  output_name = "import/" + output_layer
-  input_operation = graph.get_operation_by_name(input_name);
-  output_operation = graph.get_operation_by_name(output_name); 
-  nodeList = [n.name for n in graph.as_graph_def().node]
-#  print(nodeList)
-  rf = tf.contrib.receptive_field.compute_receptive_field_from_graph_def(graph.as_graph_def(),'import/input','import/MobilenetV1/MobilenetV1/Conv2d_0/Relu6')
-  print(rf)
-  with tf.Session(graph=graph) as sess:
-    results = sess.run(output_operation.outputs[0],
-                      {input_operation.outputs[0]: t})
-    start = time.time()
-    results = sess.run(output_operation.outputs[0],
-                      {input_operation.outputs[0]: t})
-    end=time.time()
-  results = np.squeeze(results)
-
-  top_k = results.argsort()[-5:][::-1]
-  labels = load_labels(label_file)
-
-  print('\nEvaluation time (1-image): {:.3f}s\n'.format(end-start))
-
-  for i in top_k:
-    print(labels[i], results[i])
+  imageWhole = read_Image(file_name)
+  
+  first_round_image_list = imagePatch= util.view_as_windows(imageWhole,window_shape=(270,270),step=270)
+#  t = read_tensor_from_image(imageWhole,
+#                             input_height=input_height,
+#                             input_width=input_width,
+#                             input_mean=input_mean,
+#                             input_std=input_std)
+  print(first_round_image_list.shape)
+#  input_name = "import/" + input_layer
+#  output_name = "import/" + output_layer
+#  input_operation = graph.get_operation_by_name(input_name);
+#  output_operation = graph.get_operation_by_name(output_name); 
+#  
+#  
+#  with tf.Session(graph=graph) as sess:
+#    results = sess.run(output_operation.outputs[0],
+#                      {input_operation.outputs[0]: t})
+#    start = time.time()
+#    results = sess.run(output_operation.outputs[0],
+#                      {input_operation.outputs[0]: t})
+#    end=time.time()
+#  results = np.squeeze(results)
+#
+#  top_k = results.argsort()[-5:][::-1]
+#  labels = load_labels(label_file)
+#
+#  print('\nEvaluation time (1-image): {:.3f}s\n'.format(end-start))
+#
+#  for i in top_k:
+#    print(labels[i], results[i])

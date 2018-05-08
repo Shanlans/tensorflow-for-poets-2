@@ -282,6 +282,10 @@ def create_model_graph(model_info):
               model_info['bottleneck_tensor_name'],
               model_info['resized_input_tensor_name'],
           ]))
+#      sess = tf.Session()
+#      op = sess.graph.get_operations()
+#      ops = [m.values() for m in op]
+#      print(ops)
   return graph, bottleneck_tensor, resized_input_tensor
 
 
@@ -320,10 +324,14 @@ def maybe_download_and_extract(data_url):
   Args:
     data_url: Web location of the tar file containing the pretrained model.
   """
-  dest_directory = FLAGS.model_dir
+  dest_directory = FLAGS.model_dir 
   if not os.path.exists(dest_directory):
     os.makedirs(dest_directory)
   filename = data_url.split('/')[-1]
+  foldername = filename.split('.tgz')[0]
+  filefolder = os.path.join(dest_directory,foldername)
+  if not os.path.exists(filefolder):
+      os.makedirs(filefolder)
   filepath = os.path.join(dest_directory, filename)
   if not os.path.exists(filepath):
 
@@ -334,11 +342,10 @@ def maybe_download_and_extract(data_url):
       sys.stdout.flush()
 
     filepath, _ = urllib.request.urlretrieve(data_url, filepath, _progress)
-    print()
     statinfo = os.stat(filepath)
     tf.logging.info('Successfully downloaded', filename, statinfo.st_size,
                     'bytes.')
-  tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+  tarfile.open(filepath, 'r:gz').extractall(filefolder)
 
 
 def ensure_dir_exists(dir_name):
@@ -894,25 +901,26 @@ def create_model_info(architecture):
     model_file_name = 'classify_image_graph_def.pb'
     input_mean = 128
     input_std = 128
-  elif architecture.startswith('mobilenet_'):
+  elif architecture.startswith('mobilenetv2_'):
     parts = architecture.split('_')
     if len(parts) != 3 and len(parts) != 4:
-      tf.logging.error("Couldn't understand architecture name '%s'",
+        tf.logging.error("Couldn't understand architecture name '%s'",
                        architecture)
-      return None
+        return None
     version_string = parts[1]
-    if (version_string != '1.0' and version_string != '0.75' and
-        version_string != '0.50' and version_string != '0.25'):
+    if (version_string != '1.4' and version_string != '1.3' and
+        version_string != '1.0' and version_string != '0.75' and
+        version_string != '0.5' and version_string != '0.35'):
       tf.logging.error(
-          """"The Mobilenet version should be '1.0', '0.75', '0.50', or '0.25',
+          """"The Mobilenet version should be '1.4','1.3','1.0', '0.75', '0.5', or '0.35',
   but found '%s' for architecture '%s'""",
           version_string, architecture)
       return None
     size_string = parts[2]
     if (size_string != '224' and size_string != '192' and
-        size_string != '160' and size_string != '128'):
+        size_string != '160' and size_string != '128' and size_string != '96'):
       tf.logging.error(
-          """The Mobilenet input size should be '224', '192', '160', or '128',
+          """The Mobilenet input size should be '224', '192', '160','128', or '96',
  but found '%s' for architecture '%s'""",
           size_string, architecture)
       return None
@@ -925,26 +933,27 @@ def create_model_info(architecture):
             architecture)
         return None
       is_quantized = True
-    data_url = 'http://download.tensorflow.org/models/mobilenet_v1_'
-    data_url += version_string + '_' + size_string + '_frozen.tgz'
-    bottleneck_tensor_name = 'MobilenetV1/Predictions/Reshape:0'
+    data_url = 'https://storage.googleapis.com/mobilenet_v2/checkpoints/mobilenet_v2_'
+    data_url += version_string + '_' + size_string + '.tgz'
+    bottleneck_tensor_name = 'MobilenetV2/Predictions/Reshape:0'
     bottleneck_tensor_size = 1001
     input_width = int(size_string)
-    input_height = int(size_string)
+    input_height = int(size_string) 
     input_depth = 3
     resized_input_tensor_name = 'input:0'
-    if is_quantized:
-      model_base_name = 'quantized_graph.pb'
-    else:
-      model_base_name = 'frozen_graph.pb'
-    model_dir_name = 'mobilenet_v1_' + version_string + '_' + size_string
+#    if is_quantized:
+#      model_base_name = 'quantized_graph.pb'
+#    else:
+#      model_base_name = 'frozen.pb'
+    model_dir_name = 'mobilenet_v2_' + version_string + '_' + size_string
+    model_base_name = model_dir_name + '_'+'frozen.pb'
     model_file_name = os.path.join(model_dir_name, model_base_name)
     input_mean = 127.5
     input_std = 127.5
   else:
     tf.logging.error("Couldn't understand architecture name '%s'", architecture)
     raise ValueError('Unknown architecture', architecture)
-
+    
   return {
       'data_url': data_url,
       'bottleneck_tensor_name': bottleneck_tensor_name,
@@ -1056,7 +1065,7 @@ def main(_):
      final_tensor,keep_prob) = add_final_training_ops(
          len(image_lists.keys()), FLAGS.final_tensor_name, bottleneck_tensor,
          model_info['bottleneck_tensor_size'])
-
+#
     # Create the operations we need to evaluate the accuracy of our new layer.
     evaluation_step, prediction = add_evaluation_step(
         final_tensor, ground_truth_input)

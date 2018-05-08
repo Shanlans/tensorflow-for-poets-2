@@ -20,6 +20,7 @@ from __future__ import print_function
 import argparse
 import sys
 import time
+import os
 
 import numpy as np
 import tensorflow as tf
@@ -32,9 +33,7 @@ def load_graph(model_file):
     graph_def.ParseFromString(f.read())
   with graph.as_default():
     tf.import_graph_def(graph_def)
-    
-    i = [node for node in graph_def.node]
-#    print(i[len(i)-3])
+
   return graph
 
 def read_tensor_from_image_file(file_name, input_height=299, input_width=299,
@@ -58,7 +57,8 @@ def read_tensor_from_image_file(file_name, input_height=299, input_width=299,
   resized = tf.image.resize_bilinear(dims_expander, [input_height, input_width])
   normalized = tf.divide(tf.subtract(resized, [input_mean]), [input_std])
   sess = tf.Session()
-  result = sess.run(normalized)
+  result,result2,result3,result4 = sess.run([normalized,resized,dims_expander,float_caster])
+  np.savetxt(os.path.join('tf_files','compare5'),result4.reshape(-1))
 
   return result
 
@@ -110,6 +110,9 @@ if __name__ == "__main__":
     input_layer = args.input_layer
   if args.output_layer:
     output_layer = args.output_layer
+  
+  print(input_mean)
+  print(input_std)
 
   graph = load_graph(model_file)
   t = read_tensor_from_image_file(file_name,
@@ -121,11 +124,7 @@ if __name__ == "__main__":
   input_name = "import/" + input_layer
   output_name = "import/" + output_layer
   input_operation = graph.get_operation_by_name(input_name);
-  output_operation = graph.get_operation_by_name(output_name); 
-  nodeList = [n.name for n in graph.as_graph_def().node]
-#  print(nodeList)
-  rf = tf.contrib.receptive_field.compute_receptive_field_from_graph_def(graph.as_graph_def(),'import/input','import/MobilenetV1/MobilenetV1/Conv2d_0/Relu6')
-  print(rf)
+  output_operation = graph.get_operation_by_name(output_name);  
   with tf.Session(graph=graph) as sess:
     results = sess.run(output_operation.outputs[0],
                       {input_operation.outputs[0]: t})
