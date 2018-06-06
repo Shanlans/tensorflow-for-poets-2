@@ -770,7 +770,8 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
   # to see in TensorBoard
   layer_name = 'intersection'
   
-  
+  global_step = tf.Variable(0, trainable=False)
+
   with tf.name_scope(layer_name):
     with tf.name_scope('weights_inter'):
       initial_inter_value = tf.truncated_normal(
@@ -787,6 +788,25 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
       tf.summary.histogram('inter_value', inter_value)
       inter_drop = tf.nn.dropout(inter_value,keep_prob=keep_prob,name='inter_drop')
       inter_relu = tf.nn.relu(inter_drop)
+    layer_name = 'intersection'
+  
+  layer_name = 'intersection1'
+  with tf.name_scope(layer_name):
+    with tf.name_scope('weights_inter'):
+      initial_inter_value = tf.truncated_normal(
+          [1000, 1000], stddev=0.001)
+
+      inter_weights1 = tf.Variable(initial_inter_value, name='inter_weights')
+
+      variable_summaries(inter_weights1)
+    with tf.name_scope('biases_inter'):
+      inter_biases1 = tf.Variable(tf.zeros([1000]), name='inter_biases')
+      variable_summaries(inter_biases1)
+    with tf.name_scope('Wx_plus_b_inter'):
+      inter_value1 = tf.matmul(inter_relu, inter_weights1) + inter_biases1
+      tf.summary.histogram('inter_value', inter_value1)
+      inter_drop1 = tf.nn.dropout(inter_value1,keep_prob=keep_prob,name='inter_drop')
+      inter_relu1 = tf.nn.relu(inter_drop1)
       
   layer_name = 'final_training_ops'
   with tf.name_scope(layer_name):
@@ -801,7 +821,7 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
       layer_biases = tf.Variable(tf.zeros([class_count]), name='final_biases')
       variable_summaries(layer_biases)
     with tf.name_scope('Wx_plus_b'):
-      logits = tf.matmul(inter_relu, layer_weights) + layer_biases
+      logits = tf.matmul(inter_relu1, layer_weights) + layer_biases
       tf.summary.histogram('pre_activations', logits)
 
   final_tensor = tf.nn.softmax(logits, name=final_tensor_name)
@@ -814,10 +834,19 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
       cross_entropy_mean = tf.reduce_mean(cross_entropy)
   tf.summary.scalar('cross_entropy', cross_entropy_mean)
 
-  with tf.name_scope('train'):
+
+  learning_rate = tf.train.exponential_decay(FLAGS.learning_rate,
+                                           global_step=global_step,
+                                           decay_steps=500,decay_rate=0.9)   
+  tf.summary.scalar('learning_rate',learning_rate)
+  add_global = global_step.assign_add(1) 
+
+  with tf.control_dependencies([add_global]): 
+    with tf.name_scope('train'):
 #    optimizer = tf.train.GradientDescentOptimizer(FLAGS.learning_rate)
-    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
-    train_step = optimizer.minimize(cross_entropy_mean)
+      #cross_entropy = cross_entropy + 0.005*(tf.nn.l2_loss(inter_weights)+tf.nn.l2_loss(layer_weights))
+      optimizer = tf.train.AdamOptimizer(learning_rate)
+      train_step = optimizer.minimize(cross_entropy_mean)
 
   return (train_step, cross_entropy_mean, bottleneck_input, ground_truth_input,
           final_tensor,keep_prob)
