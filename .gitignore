@@ -7,3 +7,4 @@ local.properties
 android.iml
 .gradle/
 android/assets/*
+*.bmp
